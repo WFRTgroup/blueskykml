@@ -168,11 +168,13 @@ class BSDispersionGrid:
 
 class BSDispersionPlot:
 
-    def __init__(self, config, dpi=75):
+    def __init__(self, config, col_int, dpi=75):
         self.parameter_label = config.get(
             'SmokeDispersionKMLOutput', "PARAMETER_LABEL") or 'PM2.5'
-        if self.parameter_label in ('PM25', 'PM2.5'):
+        if self.parameter_label in ('PM25', 'PM2.5') and not col_int:
             self.parameter_label = r'$PM_{2.5} \/[\mu g/m^{3}]$'
+        elif self.parameter_label in ('PM25', 'PM2.5') and col_int:
+            self.parameter_label = r'$PM_{2.5} \/[\mu g/m^{2}]$'
 
         self.dpi = dpi
         self.export_format = 'png'
@@ -354,24 +356,33 @@ def create_dispersion_images(config):
             for utc_offset in utc_offsets:
                 plot = create_daily_average_dispersion_images(
                     config, grid, color_map_section, layer, utc_offset)
+    
+    # Here is the column-integration product used by UBC's WFRT
+    for color_map_section in dfu.parse_color_map_names(
+            config, CONFIG_COLOR_LABELS[TimeSeriesTypes.HOURLY]):
+        plot = create_column_integration_dispersion_images(
+            config, grid, color_map_section, layers)
 
     if not plot:
         raise Exception("Configuration ERROR... No color maps defined.")
 
     # Return the grid starting date, and a tuple lon/lat bounding box of the plot
+    heights = [grid.heights[l] for l in layers]
+    heights.append("column_integrated")
+
     return (
         grid.datetimes[0],
         (plot.lonmin, plot.latmin, plot.lonmax, plot.latmax),
-        [grid.heights[l] for l in layers] # only the heights extracted
+        heights # only the heights extracted
     )
 
 @memoizeme
-def create_color_plot(config, grid, section, parameter=None):
+def create_color_plot(config, grid, section, col_int, parameter=None):
     # Create plots
     # Note that grid.data has dimensions of: [time,lay,row,col]
 
       # Create a dispersion plot instance
-    plot = BSDispersionPlot(config, dpi=150)
+    plot = BSDispersionPlot(config, col_int, dpi=150)
 
     # Data levels for binning and contouring
     if parameter and ('PERCENT' in parameter or 'PCNTSIMS' in parameter):
@@ -401,8 +412,43 @@ def create_color_plot(config, grid, section, parameter=None):
 
     return plot
 
+def create_column_integration_dispersion_images(config, grid, section, layers):
+    plot = create_color_plot(config, grid, section, True)
+    height_label = "column_integrated"
+
+    outdir = dfu.create_image_set_dir(config, height_label,
+        TIME_SET_DIR_NAMES[dfu.TimeSeriesTypes.HOURLY], section)
+
+    for i in range(grid.num_times):
+        # Shift filename date stamps
+        fileroot = dfu.image_pathname(outdir, height_label,
+            dfu.TimeSeriesTypes.HOURLY, grid.datetimes[i]-timedelta(hours=1))
+
+        logging.debug("Creating column_integrated (%s) concentration "
+            "plot %d of %d " % (section, i+1, grid.num_times))
+        
+        # flattened_layers = [np.multiply(grid.data[i,layer,:,:], grid.heights[layer]) for layer in layers]
+        # flattened_layers = np.stack(flattened_layers, axis=0)
+        # col_int_data = np.sum(flattened_layers, axis=0)
+
+        # Create a filled contour plot
+        heights = []
+        for layer in layers:
+            heights.append(int(grid.heights[layer]))
+        col_int_data = np.trapz(grid.data[i,:,:,:], x= heights, axis = 0)
+
+        plot.make_contour_plot(col_int_data, fileroot)
+    
+    # Create a color bar to use in overlays
+    fileroot = dfu.legend_pathname(outdir, height_label,
+        dfu.TimeSeriesTypes.HOURLY)
+    plot.make_colorbar(fileroot)
+
+    # plot will be used for its already computed min/max lat/lon
+    return plot
+
 def create_hourly_dispersion_images(config, grid, section, layer):
-    plot = create_color_plot(config, grid, section)
+    plot = create_color_plot(config, grid, section, False)
     height_label = dfu.create_height_label(grid.heights[layer])
 
     outdir = dfu.create_image_set_dir(config, height_label,
@@ -434,7 +480,7 @@ def create_three_hour_dispersion_images(config, grid, section, layer):
 
     # TODO: write tests for this function
 
-    plot = create_color_plot(config, grid, section)
+    plot = create_color_plot(config, grid, section, False)
     height_label = dfu.create_height_label(grid.heights[layer])
 
     outdir = dfu.create_image_set_dir(config, height_label,
@@ -464,7 +510,7 @@ def create_three_hour_dispersion_images(config, grid, section, layer):
 
 def create_daily_maximum_dispersion_images(config, grid, section, layer,
         utc_offset):
-    plot = create_color_plot(config, grid, section)
+    plot = create_color_plot(config, grid, section, False)
     height_label = dfu.create_height_label(grid.heights[layer])
     outdir = dfu.create_image_set_dir(config, height_label,
         TIME_SET_DIR_NAMES[dfu.TimeSeriesTypes.DAILY_MAXIMUM],
@@ -486,7 +532,7 @@ def create_daily_maximum_dispersion_images(config, grid, section, layer,
 
 def create_daily_average_dispersion_images(config, grid, section, layer,
         utc_offset):
-    plot = create_color_plot(config, grid, section)
+    plot = create_color_plot(config, grid, section, False)
     height_label = dfu.create_height_label(grid.heights[layer])
     outdir = dfu.create_image_set_dir(config, height_label,
         TIME_SET_DIR_NAMES[dfu.TimeSeriesTypes.DAILY_AVERAGE],

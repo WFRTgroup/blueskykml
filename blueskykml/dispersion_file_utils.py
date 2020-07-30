@@ -14,6 +14,9 @@ __all__ = [
 def create_height_label(height):
     """Doesn't do much, but it's centralized so that we change easily
     """
+    if height == "column_integrated":
+        return height
+
     return height + 'm'
 
 def create_dir_if_does_not_exist(outdir):

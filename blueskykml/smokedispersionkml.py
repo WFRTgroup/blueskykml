@@ -278,8 +278,12 @@ class KmzCreator(object):
     def _create_concentration_information(self):
         kml_root = pykml.Folder().set_name('%s from Wildland Fire'
             % self._concentration_param_label.upper()).set_open(True)
-        min_height_label = str(min([int(e.replace('m',''))
-            for e in self._dispersion_images])) + 'm'
+        # A change was made here to allow for column-integration images
+        int_height_labels = []
+        for e in self._dispersion_images:
+            if e is not "column_integrated":
+                int_height_labels.append(int(e.replace('m','')))
+        min_height_label = str(min(int_height_labels)) + 'm'
         for height_label in self._dispersion_images:
             height_root = pykml.Folder().set_name('Height %s ' % (height_label))
             for time_series_type in TimeSeriesTypes.ALL:

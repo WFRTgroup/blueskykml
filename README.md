@@ -248,3 +248,5 @@ like to run ```makedispersionkml``` in docker, you can use the
 [bluesky docker image](https://hub.docker.com/r/pnwairfire/bluesky/),
 which contains all of blueskykml's dependencies (as well as blueskykml
 itself).
+
+Rosie: I've been added (31 Aug 2020)
